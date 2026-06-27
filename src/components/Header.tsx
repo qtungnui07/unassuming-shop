@@ -4,17 +4,18 @@
  */
 
 import React from 'react';
-import { ShoppingBag, MapPin, Award, BookOpen, Menu } from 'lucide-react';
-import { ScreenType, CartItem } from '../types';
+import { ShoppingBag, UserRound } from 'lucide-react';
+import { ScreenType, CartItem, CustomerProfile } from '../types';
 
 interface HeaderProps {
   currentScreen: ScreenType;
   setScreen: (screen: ScreenType) => void;
   cart: CartItem[];
   toggleCart: () => void;
+  customer: CustomerProfile | null;
 }
 
-export default function Header({ currentScreen, setScreen, cart, toggleCart }: HeaderProps) {
+export default function Header({ currentScreen, setScreen, cart, toggleCart, customer }: HeaderProps) {
   const cartItemCount = cart.reduce((acc, item) => acc + item.quantity, 0);
 
   return (
@@ -78,6 +79,14 @@ export default function Header({ currentScreen, setScreen, cart, toggleCart }: H
 
         {/* Actions */}
         <div className="flex items-center space-x-4">
+          <button
+            onClick={() => setScreen(customer ? 'account' : 'auth')}
+            className="p-2.5 text-zinc-700 hover:text-zinc-950 hover:bg-zinc-50 rounded-full border border-zinc-100"
+            aria-label={customer ? 'Your account' : 'Sign in'}
+            title={customer ? `Account: ${customer.name}` : 'Sign in or register'}
+          >
+            <UserRound className="h-5.5 w-5.5" />
+          </button>
           {/* Cart Icon */}
           <button
             onClick={toggleCart}

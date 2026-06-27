@@ -40,3 +40,20 @@ export interface CreateOrderRequest extends QuoteRequest {
   paymentPreference: 'cash' | 'card';
   idempotencyKey: string;
 }
+
+export interface CustomerProfile {
+  email: string;
+  name: string;
+  phone: string;
+  burgerProgress: number;
+  rewardCredits: number;
+}
+
+export interface CustomerOrderSummary {
+  orderId: string;
+  deliveryType: 'delivery' | 'pickup';
+  status: OrderStatus;
+  totalCents: number;
+  createdAt: string;
+  items: Array<{ name: string; quantity: number; lineTotalCents: number }>;
+}

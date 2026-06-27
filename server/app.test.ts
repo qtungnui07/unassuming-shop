@@ -17,6 +17,32 @@ describe('HTTP API boundaries', () => {
     expect(response.body.error).toMatch(/Authentication/);
   });
 
+  it('does not expose customer orders without a session', async () => {
+    const response = await request(app).get('/api/account/orders');
+    expect(response.status).toBe(401);
+    expect(response.body.error).toMatch(/Authentication/);
+  });
+
+  it('validates registration before touching the database', async () => {
+    const response = await request(app).post('/api/account/register').send({
+      name: 'A',
+      email: 'not-an-email',
+      phone: '1',
+      password: 'short',
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Invalid request');
+  });
+
+  it('validates reset tokens and password strength before querying', async () => {
+    const response = await request(app).post('/api/account/reset-password').send({
+      token: 'short',
+      password: 'short',
+    });
+    expect(response.status).toBe(400);
+    expect(response.body.error).toBe('Invalid request');
+  });
+
   it('rejects malformed quote requests before querying products', async () => {
     const response = await request(app).post('/api/orders/quote').send({ items: [] });
     expect(response.status).toBe(400);

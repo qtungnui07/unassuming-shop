@@ -38,3 +38,30 @@ export const adminLoginSchema = z.object({
   email: z.email(),
   password: z.string().min(8).max(200),
 });
+
+const password = z.string().min(12, 'Password must be at least 12 characters').max(200);
+
+export const registerSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  email: z.email().transform((value) => value.toLowerCase()),
+  phone: z.string().trim().min(7).max(30),
+  password,
+});
+
+export const customerLoginSchema = z.object({
+  email: z.email().transform((value) => value.toLowerCase()),
+  password: z.string().min(1).max(200),
+});
+
+export const verifyTokenSchema = z.object({ token: z.string().min(20).max(200) });
+export const forgotPasswordSchema = z.object({
+  email: z.email().transform((value) => value.toLowerCase()),
+});
+export const resetPasswordSchema = z.object({
+  token: z.string().min(20).max(200),
+  password,
+});
+export const updateProfileSchema = z.object({
+  name: z.string().trim().min(2).max(100),
+  phone: z.string().trim().min(7).max(30),
+});

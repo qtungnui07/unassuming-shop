@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { CreditCard, Banknote, ShoppingBag, Truck, CheckCircle, ChevronLeft, MapPin } from 'lucide-react';
-import { CartItem, OrderDetails, ScreenType } from '../types';
+import { CartItem, CustomerProfile, OrderDetails, ScreenType } from '../types';
 import { api } from '../api';
 
 interface CheckoutViewProps {
@@ -13,15 +13,16 @@ interface CheckoutViewProps {
   setScreen: (screen: ScreenType) => void;
   onPlaceOrder: (orderDetails: OrderDetails) => void;
   clearCart: () => void;
+  customer: CustomerProfile | null;
 }
 
-export default function CheckoutView({ cart, setScreen, onPlaceOrder, clearCart }: CheckoutViewProps) {
+export default function CheckoutView({ cart, setScreen, onPlaceOrder, customer }: CheckoutViewProps) {
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
   
   // Form states
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
+  const [name, setName] = useState(customer?.name ?? '');
+  const [email, setEmail] = useState(customer?.email ?? '');
+  const [phone, setPhone] = useState(customer?.phone ?? '');
   const [address, setAddress] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [paymentPreference, setPaymentPreference] = useState<'cash' | 'card'>('card');
@@ -212,6 +213,7 @@ export default function CheckoutView({ cart, setScreen, onPlaceOrder, clearCart 
                         onChange={(e) => setEmail(e.target.value)}
                         className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-3 text-sm focus:outline-hidden focus:border-zinc-950 font-sans"
                         required
+                        disabled={Boolean(customer)}
                         id="checkout-email"
                       />
                     </div>
@@ -274,6 +276,7 @@ export default function CheckoutView({ cart, setScreen, onPlaceOrder, clearCart 
                   <input type="checkbox" checked={applyReward} onChange={(e) => setApplyReward(e.target.checked)} />
                   Apply an available Honest Reward to an eligible burger
                 </label>
+                {customer && <p className="text-xs text-emerald-700">Signed in as {customer.email}. This order and its rewards will be saved to your account.</p>}
               </div>
 
               {/* Error Warning */}

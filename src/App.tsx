@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { ScreenType, MenuItem, CartItem, Customizations, OrderDetails } from './types';
+import { ScreenType, MenuItem, CartItem, Customizations, OrderDetails, CustomerProfile } from './types';
 import { MENU_ITEMS } from './data';
 import { api } from './api';
 
@@ -21,6 +21,8 @@ import LocationsView from './components/LocationsView';
 import RewardsView from './components/RewardsView';
 import CartDrawer from './components/CartDrawer';
 import AdminView from './components/AdminView';
+import AuthView from './components/AuthView';
+import AccountView from './components/AccountView';
 
 export default function App() {
   const [currentScreen, setScreen] = useState<ScreenType>(
@@ -33,6 +35,7 @@ export default function App() {
   const [activeProduct, setActiveProduct] = useState<MenuItem>(MENU_ITEMS[0]);
   const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [customer, setCustomer] = useState<CustomerProfile | null>(null);
 
   // Selector for customized product details
   const selectProduct = (productId: string) => {
@@ -57,13 +60,21 @@ export default function App() {
   }, [cart]);
 
   useEffect(() => {
+    api.get<CustomerProfile>('/api/account/session').then(setCustomer).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     const token = new URLSearchParams(window.location.search).get('order');
     const rewardsToken = new URLSearchParams(window.location.search).get('rewards');
+    const verifyToken = new URLSearchParams(window.location.search).get('verify');
+    const resetToken = new URLSearchParams(window.location.search).get('reset');
     if (token) {
       api.get<OrderDetails>(`/api/orders/track/${encodeURIComponent(token)}`).then((order) => {
         setOrderDetails({ ...order, trackingToken: token });
         setScreen('order-tracking');
       }).catch(() => {});
+    } else if (verifyToken || resetToken) {
+      setScreen('auth');
     } else if (rewardsToken) {
       setScreen('rewards');
     }
@@ -215,6 +226,7 @@ export default function App() {
             setScreen={setScreen}
             onPlaceOrder={onPlaceOrder}
             clearCart={resetAppletState}
+            customer={customer}
           />
         );
       case 'order-tracking':
@@ -230,7 +242,13 @@ export default function App() {
       case 'locations':
         return <LocationsView />;
       case 'rewards':
-        return <RewardsView />;
+        return customer ? <AccountView customer={customer} onCustomerChange={setCustomer} onLogout={logout} /> : <RewardsView />;
+      case 'auth':
+        return <AuthView onAuthenticated={setCustomer} setScreen={setScreen} />;
+      case 'account':
+        return customer
+          ? <AccountView customer={customer} onCustomerChange={setCustomer} onLogout={logout} />
+          : <AuthView onAuthenticated={setCustomer} setScreen={setScreen} />;
       case 'admin':
         return <AdminView />;
       default:
@@ -244,6 +262,12 @@ export default function App() {
     }
   };
 
+  async function logout() {
+    await api.post('/api/account/logout').catch(() => {});
+    setCustomer(null);
+    setScreen('home');
+  }
+
   return (
     <div className="flex flex-col min-h-screen bg-zinc-50 text-zinc-900 font-sans" id="app-viewport">
       {/* Global Navigation Header */}
@@ -252,6 +276,7 @@ export default function App() {
         setScreen={setScreen}
         cart={cart}
         toggleCart={() => setIsCartOpen(!isCartOpen)}
+        customer={customer}
       />}
 
       {/* Main Screen Outlet */}

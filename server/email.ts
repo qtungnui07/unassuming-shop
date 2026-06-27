@@ -37,3 +37,23 @@ export async function sendRewardsEmail(email: string, token: string) {
     html: `<p><a href="${url}">View your private Honest Rewards ledger</a>.</p>`,
   });
 }
+
+async function sendAccountLink(email: string, subject: string, query: string, token: string, label: string) {
+  const url = `${config.publicUrl}/?${query}=${encodeURIComponent(token)}`;
+  if (!resend) {
+    console.info(`[email disabled] ${label} -> ${email}: ${url}`);
+    return;
+  }
+  await resend.emails.send({
+    from: config.emailFrom,
+    to: email,
+    subject,
+    html: `<p><a href="${url}">${label}</a>.</p><p>If you did not request this, you can ignore this email.</p>`,
+  });
+}
+
+export const sendVerificationEmail = (email: string, token: string) =>
+  sendAccountLink(email, 'Verify your Unassuming account', 'verify', token, 'Verify your account');
+
+export const sendPasswordResetEmail = (email: string, token: string) =>
+  sendAccountLink(email, 'Reset your Unassuming password', 'reset', token, 'Reset your password');

@@ -1,6 +1,6 @@
 # Unassuming Shop
 
-React storefront and Express/PostgreSQL backend for guest ordering, pay-on-handoff fulfillment, rewards, and staff operations.
+React storefront and Express/PostgreSQL backend for guest ordering, optional verified customer accounts, pay-on-handoff fulfillment, rewards, and staff operations.
 
 ## Local setup
 
@@ -33,3 +33,5 @@ The bootstrap admin must replace its temporary password on first sign-in. If `RE
 Create a Railway PostgreSQL service, connect `DATABASE_URL`, and configure the remaining variables from `.env.example`. `railway.json` builds both applications, runs migrations and the idempotent seed before deployment, and checks `/api/health`.
 
 Order totals and customization prices are calculated by the server in integer cents. Tracking and reward ledgers use unguessable emailed links; staff authentication uses expiring HTTP-only cookie sessions.
+
+Customer registration requires email verification. Verified accounts use separate 30-day HTTP-only sessions and provide profile editing, rewards, order history, checkout prefill, and email-based password recovery. Run migrations after pulling account-related schema changes.

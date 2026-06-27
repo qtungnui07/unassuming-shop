@@ -7,12 +7,17 @@ import helmet from 'helmet';
 import { Prisma, type OrderStatus } from '@prisma/client';
 import { config } from './config.js';
 import { prisma as defaultPrisma } from './db.js';
-import { sendOrderEmail, sendRewardsEmail } from './email.js';
+import { sendOrderEmail, sendPasswordResetEmail, sendRewardsEmail, sendVerificationEmail } from './email.js';
 import { assertDeliveryEligible, calculateTotals, PricingError, validateAndPriceLine } from './pricing.js';
-import { adminLoginSchema, createOrderSchema, quoteSchema } from './schemas.js';
+import {
+  adminLoginSchema, createOrderSchema, customerLoginSchema, forgotPasswordSchema,
+  quoteSchema, registerSchema, resetPasswordSchema, updateProfileSchema, verifyTokenSchema,
+} from './schemas.js';
 import { createToken, hashToken, normalizeEmail } from './security.js';
 
 const SESSION_COOKIE = 'unassuming_admin';
+const CUSTOMER_COOKIE = 'unassuming_customer';
+const CUSTOMER_SESSION_MS = 30 * 24 * 60 * 60 * 1000;
 const STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   received: ['preparing', 'cancelled'],
   preparing: ['ready', 'out_for_delivery', 'cancelled'],
@@ -54,7 +59,19 @@ const publicOrder = (order: any) => ({
   statusHistory: order.statusHistory,
 });
 
-async function pricedQuote(db: Database, body: ReturnType<typeof quoteSchema.parse>) {
+const customerProfile = (customer: any) => ({
+  email: customer.email,
+  name: customer.name,
+  phone: customer.phone,
+  burgerProgress: customer.burgerProgress,
+  rewardCredits: customer.rewardCredits,
+});
+
+async function pricedQuote(
+  db: Database,
+  body: ReturnType<typeof quoteSchema.parse>,
+  authenticatedCustomer?: any,
+) {
   assertDeliveryEligible(body.deliveryType, body.postalCode);
   const ids = [...new Set(body.items.map((item) => item.productId))];
   const products = await db.product.findMany({ where: { id: { in: ids } } });
@@ -65,12 +82,17 @@ async function pricedQuote(db: Database, body: ReturnType<typeof quoteSchema.par
     const line = { ...item, product };
     return { ...line, ...validateAndPriceLine(line) };
   });
-  const customer = await db.customer.findUnique({ where: { email: normalizeEmail(body.email) } });
-  const totals = calculateTotals(lines, body.deliveryType, body.applyReward, customer?.rewardCredits ?? 0);
+  const requestedCustomer = await db.customer.findUnique({ where: { email: normalizeEmail(body.email) } });
+  if (requestedCustomer?.emailVerifiedAt && requestedCustomer.id !== authenticatedCustomer?.id) {
+    throw new PricingError('Sign in to use this account email', 401);
+  }
+  const rewards = authenticatedCustomer?.rewardCredits
+    ?? (requestedCustomer?.emailVerifiedAt ? 0 : requestedCustomer?.rewardCredits ?? 0);
+  const totals = calculateTotals(lines, body.deliveryType, body.applyReward, rewards);
   return {
     lines,
     ...totals,
-    rewardAvailable: (customer?.rewardCredits ?? 0) > 0,
+    rewardAvailable: rewards > 0,
   };
 }
 
@@ -82,7 +104,197 @@ export function createApp(db: Database = defaultPrisma) {
   app.use(express.json({ limit: '100kb' }));
   app.use(cookieParser());
 
+  const optionalCustomer = async (request: Request, _response: Response, next: NextFunction) => {
+    try {
+      const token = request.cookies[CUSTOMER_COOKIE];
+      if (token) {
+        const session = await db.customerSession.findUnique({
+          where: { tokenHash: hashToken(token) },
+          include: { customer: true },
+        });
+        if (session && session.expiresAt > new Date() && session.customer.emailVerifiedAt) {
+          (request as any).customer = session.customer;
+        }
+      }
+      next();
+    } catch (error) { next(error); }
+  };
+  app.use(optionalCustomer);
+
+  const requireCustomer = (request: Request, response: Response, next: NextFunction) => {
+    if (!(request as any).customer) return response.status(401).json({ error: 'Authentication required' });
+    next();
+  };
+
+  const setCustomerCookie = (response: Response, token: string) => response.cookie(CUSTOMER_COOKIE, token, {
+    httpOnly: true,
+    secure: config.nodeEnv === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: CUSTOMER_SESSION_MS,
+  });
+
   app.get('/api/health', (_request, response) => response.json({ ok: true }));
+
+  app.post('/api/account/register', async (request, response, next) => {
+    try {
+      const body = registerSchema.parse(request.body);
+      const email = normalizeEmail(body.email);
+      const existing = await db.customer.findUnique({ where: { email } });
+      if (existing?.emailVerifiedAt) {
+        return response.status(202).json({ message: 'Check your email for next steps.' });
+      }
+      const passwordHash = await bcrypt.hash(body.password, 12);
+      const customer = existing
+        ? await db.customer.update({
+            where: { id: existing.id },
+            data: { name: body.name, phone: body.phone, passwordHash },
+          })
+        : await db.customer.create({
+            data: { email, name: body.name, phone: body.phone, passwordHash },
+          });
+      await db.customerAuthToken.updateMany({
+        where: { customerId: customer.id, purpose: 'verify_email', usedAt: null },
+        data: { usedAt: new Date() },
+      });
+      const token = createToken();
+      await db.customerAuthToken.create({
+        data: {
+          tokenHash: hashToken(token),
+          purpose: 'verify_email',
+          customerId: customer.id,
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+        },
+      });
+      void sendVerificationEmail(email, token).catch(console.error);
+      response.status(202).json({ message: 'Check your email to verify your account.' });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/account/verify', async (request, response, next) => {
+    try {
+      const { token } = verifyTokenSchema.parse(request.body);
+      const authToken = await db.customerAuthToken.findUnique({
+        where: { tokenHash: hashToken(token) },
+        include: { customer: true },
+      });
+      if (!authToken || authToken.purpose !== 'verify_email' || authToken.usedAt || authToken.expiresAt <= new Date()) {
+        return response.status(400).json({ error: 'Verification link is invalid or expired' });
+      }
+      await db.$transaction([
+        db.customerAuthToken.update({ where: { id: authToken.id }, data: { usedAt: new Date() } }),
+        db.customer.update({ where: { id: authToken.customerId }, data: { emailVerifiedAt: new Date() } }),
+      ]);
+      response.json({ message: 'Email verified. You can now sign in.' });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/account/login', async (request, response, next) => {
+    try {
+      const body = customerLoginSchema.parse(request.body);
+      const customer = await db.customer.findUnique({ where: { email: normalizeEmail(body.email) } });
+      if (!customer?.passwordHash || !customer.emailVerifiedAt || !await bcrypt.compare(body.password, customer.passwordHash)) {
+        return response.status(401).json({ error: 'Invalid email or password' });
+      }
+      const token = createToken();
+      await db.customerSession.create({
+        data: {
+          tokenHash: hashToken(token),
+          customerId: customer.id,
+          expiresAt: new Date(Date.now() + CUSTOMER_SESSION_MS),
+        },
+      });
+      setCustomerCookie(response, token).json(customerProfile(customer));
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/account/logout', async (request, response, next) => {
+    try {
+      const token = request.cookies[CUSTOMER_COOKIE];
+      if (token) await db.customerSession.deleteMany({ where: { tokenHash: hashToken(token) } });
+      response.clearCookie(CUSTOMER_COOKIE, { path: '/' }).status(204).end();
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/account/session', requireCustomer, (request, response) => {
+    response.json(customerProfile((request as any).customer));
+  });
+
+  app.patch('/api/account/profile', requireCustomer, async (request, response, next) => {
+    try {
+      const body = updateProfileSchema.parse(request.body);
+      const customer = await db.customer.update({
+        where: { id: (request as any).customer.id },
+        data: body,
+      });
+      response.json(customerProfile(customer));
+    } catch (error) { next(error); }
+  });
+
+  app.get('/api/account/orders', requireCustomer, async (request, response, next) => {
+    try {
+      const orders = await db.order.findMany({
+        where: { customerId: (request as any).customer.id },
+        include: { items: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      response.json(orders.map((order) => ({
+        orderId: order.displayId,
+        deliveryType: order.deliveryType,
+        status: order.status,
+        totalCents: order.totalCents,
+        createdAt: order.createdAt,
+        items: order.items.map((item) => ({
+          name: item.productName,
+          quantity: item.quantity,
+          lineTotalCents: item.lineTotalCents,
+        })),
+      })));
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/account/forgot-password', async (request, response, next) => {
+    try {
+      const { email } = forgotPasswordSchema.parse(request.body);
+      const customer = await db.customer.findUnique({ where: { email: normalizeEmail(email) } });
+      if (customer?.emailVerifiedAt && customer.passwordHash) {
+        await db.customerAuthToken.updateMany({
+          where: { customerId: customer.id, purpose: 'reset_password', usedAt: null },
+          data: { usedAt: new Date() },
+        });
+        const token = createToken();
+        await db.customerAuthToken.create({
+          data: {
+            tokenHash: hashToken(token),
+            purpose: 'reset_password',
+            customerId: customer.id,
+            expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+          },
+        });
+        void sendPasswordResetEmail(customer.email, token).catch(console.error);
+      }
+      response.status(202).json({ message: 'If that account exists, a reset link is on its way.' });
+    } catch (error) { next(error); }
+  });
+
+  app.post('/api/account/reset-password', async (request, response, next) => {
+    try {
+      const body = resetPasswordSchema.parse(request.body);
+      const authToken = await db.customerAuthToken.findUnique({ where: { tokenHash: hashToken(body.token) } });
+      if (!authToken || authToken.purpose !== 'reset_password' || authToken.usedAt || authToken.expiresAt <= new Date()) {
+        return response.status(400).json({ error: 'Reset link is invalid or expired' });
+      }
+      await db.$transaction([
+        db.customerAuthToken.update({ where: { id: authToken.id }, data: { usedAt: new Date() } }),
+        db.customer.update({
+          where: { id: authToken.customerId },
+          data: { passwordHash: await bcrypt.hash(body.password, 12) },
+        }),
+        db.customerSession.deleteMany({ where: { customerId: authToken.customerId } }),
+      ]);
+      response.clearCookie(CUSTOMER_COOKIE, { path: '/' }).json({ message: 'Password reset. You can now sign in.' });
+    } catch (error) { next(error); }
+  });
 
   app.get('/api/catalog', async (_request, response, next) => {
     try {
@@ -123,7 +335,8 @@ export function createApp(db: Database = defaultPrisma) {
   app.post('/api/orders/quote', async (request, response, next) => {
     try {
       const body = quoteSchema.parse(request.body);
-      const { lines: _lines, rewardApplied: _rewardApplied, ...quote } = await pricedQuote(db, body);
+      if ((request as any).customer) body.email = (request as any).customer.email;
+      const { lines: _lines, rewardApplied: _rewardApplied, ...quote } = await pricedQuote(db, body, (request as any).customer);
       response.json(quote);
     } catch (error) { next(error); }
   });
@@ -131,6 +344,7 @@ export function createApp(db: Database = defaultPrisma) {
   app.post('/api/orders', async (request, response, next) => {
     try {
       const body = createOrderSchema.parse(request.body);
+      if ((request as any).customer) body.email = (request as any).customer.email;
       const existing = await db.order.findUnique({
         where: { idempotencyKey: body.idempotencyKey },
         include: { customer: true, items: true, statusHistory: true },
@@ -141,15 +355,18 @@ export function createApp(db: Database = defaultPrisma) {
         }
         return response.json({ ...publicOrder(existing), trackingToken: existing.trackingToken });
       }
-      const quote = await pricedQuote(db, body);
+      const authenticatedCustomer = (request as any).customer;
+      const quote = await pricedQuote(db, body, authenticatedCustomer);
       const trackingToken = createToken();
       const displayId = `UNS-${randomInt(100000, 1000000)}`;
       const order = await db.$transaction(async (transaction) => {
-        const customer = await transaction.customer.upsert({
-          where: { email: normalizeEmail(body.email) },
-          create: { email: normalizeEmail(body.email), name: body.name, phone: body.phone },
-          update: { name: body.name, phone: body.phone },
-        });
+        const customer = authenticatedCustomer
+          ? await transaction.customer.findUniqueOrThrow({ where: { id: authenticatedCustomer.id } })
+          : await transaction.customer.upsert({
+              where: { email: normalizeEmail(body.email) },
+              create: { email: normalizeEmail(body.email), name: body.name, phone: body.phone },
+              update: { name: body.name, phone: body.phone },
+            });
         if (quote.rewardApplied) {
           const result = await transaction.customer.updateMany({
             where: { id: customer.id, rewardCredits: { gt: 0 } },
@@ -213,6 +430,7 @@ export function createApp(db: Database = defaultPrisma) {
     try {
       const customer = await db.customer.findFirst({ where: { rewardAccessHash: hashToken(request.params.token) } });
       if (!customer) return response.status(404).json({ error: 'Reward access link is invalid' });
+      if (customer.emailVerifiedAt) return response.status(404).json({ error: 'Reward access link is invalid' });
       response.json({ burgerProgress: customer.burgerProgress, rewardCredits: customer.rewardCredits });
     } catch (error) { next(error); }
   });
@@ -221,7 +439,7 @@ export function createApp(db: Database = defaultPrisma) {
     try {
       const email = normalizeEmail(String(request.body.email ?? ''));
       const customer = await db.customer.findUnique({ where: { email } });
-      if (customer) {
+      if (customer && !customer.emailVerifiedAt) {
         const token = createToken();
         await db.customer.update({ where: { id: customer.id }, data: { rewardAccessHash: hashToken(token) } });
         // A dedicated template can be added later; deliberately avoid account enumeration.

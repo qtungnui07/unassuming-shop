@@ -38,6 +38,11 @@ enum OrderStatus {
   cancelled
 }
 
+enum CustomerTokenPurpose {
+  verify_email
+  reset_password
+}
+
 model Product {
   id           String          @id
   name         String
@@ -76,9 +81,38 @@ model Customer {
   burgerProgress  Int      @default(0)
   rewardCredits   Int      @default(0)
   rewardAccessHash String?
+  passwordHash     String?
+  emailVerifiedAt DateTime?
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
   orders          Order[]
+  sessions        CustomerSession[]
+  authTokens      CustomerAuthToken[]
+}
+
+model CustomerSession {
+  id         String   @id @default(cuid())
+  tokenHash  String   @unique
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([expiresAt])
+}
+
+model CustomerAuthToken {
+  id         String               @id @default(cuid())
+  tokenHash  String               @unique
+  purpose    CustomerTokenPurpose
+  customerId String
+  customer   Customer             @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime
+  usedAt     DateTime?
+  createdAt  DateTime             @default(now())
+
+  @@index([customerId, purpose])
+  @@index([expiresAt])
 }
 
 model Order {

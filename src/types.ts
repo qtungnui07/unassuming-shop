@@ -59,4 +59,21 @@ export interface OrderDetails {
   items: Array<{ productId: string; name: string; quantity: number; lineTotalCents: number }>;
 }
 
-export type ScreenType = 'home' | 'menu' | 'product-detail' | 'checkout' | 'order-tracking' | 'our-story' | 'locations' | 'rewards' | 'admin';
+export interface CustomerProfile {
+  email: string;
+  name: string;
+  phone: string;
+  burgerProgress: number;
+  rewardCredits: number;
+}
+
+export interface CustomerOrderSummary {
+  orderId: string;
+  deliveryType: 'delivery' | 'pickup';
+  status: string;
+  totalCents: number;
+  createdAt: string;
+  items: Array<{ name: string; quantity: number; lineTotalCents: number }>;
+}
+
+export type ScreenType = 'home' | 'menu' | 'product-detail' | 'checkout' | 'order-tracking' | 'our-story' | 'locations' | 'rewards' | 'auth' | 'account' | 'admin';
