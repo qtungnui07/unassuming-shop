@@ -6,6 +6,8 @@
   "scripts": {
     "setup": "bash scripts/setup-local.sh",
     "local": "npm run setup && npm run dev:all",
+    "setup:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-local.ps1",
+    "local:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-local.ps1 -Start",
     "dev": "vite --port=3000 --host=0.0.0.0",
     "dev:server": "tsx watch server/index.ts",
     "dev:all": "concurrently \"npm run dev:server\" \"npm run dev\"",

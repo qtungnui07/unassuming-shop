@@ -10,6 +10,12 @@ Install Node.js 20+ and Docker, then run:
 npm run local
 ```
 
+On Windows PowerShell, run:
+
+```powershell
+npm run local:windows
+```
+
 This installs dependencies, starts the Compose-managed PostgreSQL service, applies migrations, seeds the database, and launches the frontend and API. It is safe to run again. The storefront runs at `http://localhost:3000`, the API at `http://localhost:8080`, and staff operations at `http://localhost:3000/admin`.
 
 The bootstrap admin must replace its temporary password on first sign-in. If `RESEND_API_KEY` is empty, emails are logged as disabled without blocking orders.
@@ -20,6 +26,8 @@ The bootstrap admin must replace its temporary password on first sign-in. If `RE
 - `npm test` — run backend business-rule tests
 - `npm run local` — set up PostgreSQL and launch the full local application
 - `npm run setup` — install dependencies, start PostgreSQL, migrate, and seed without launching
+- `npm run local:windows` — Windows PowerShell equivalent of `npm run local`
+- `npm run setup:windows` — Windows PowerShell setup without launching
 - `npm run build && npm run build:server` — create production assets
 - `npm start` — serve the API and built storefront
 - `npm run db:migrate` — apply committed PostgreSQL migrations
