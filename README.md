@@ -35,3 +35,14 @@ Create a Railway PostgreSQL service, connect `DATABASE_URL`, and configure the r
 Order totals and customization prices are calculated by the server in integer cents. Tracking and reward ledgers use unguessable emailed links; staff authentication uses expiring HTTP-only cookie sessions.
 
 Customer registration requires email verification. Verified accounts use separate 30-day HTTP-only sessions and provide profile editing, rewards, order history, checkout prefill, and email-based password recovery. Run migrations after pulling account-related schema changes.
+
+
+docker run -d \
+  --name some-postgres \
+  -p 5432:5432 \
+  -v e84dfe1d40c996842162e73f696346000eeb1c15ce2b2ce1654398965089fea1:/var/lib/postgresql \
+  -e POSTGRES_PASSWORD=UnassumingHackathon \
+  postgres
+
+
+  DATABASE_URL=postgresql://postgres:UnassumingHackathon@localhost:5432/postgres
