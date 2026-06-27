@@ -1,20 +1,35 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Unassuming Shop
 
-# Run and deploy your AI Studio app
+React storefront and Express/PostgreSQL backend for guest ordering, pay-on-handoff fulfillment, rewards, and staff operations.
 
-This contains everything you need to run your app locally.
+## Local setup
 
-View your app in AI Studio: https://ai.studio/apps/23db988c-c83e-403c-ae16-783c6cd0c0eb
+1. Install Node.js 20+ and PostgreSQL.
+2. Copy `.env.example` to `.env` and replace the development secrets.
+3. Run `npm install`.
+4. Create the configured database, then run:
 
-## Run Locally
+   ```sh
+   npm run db:migrate
+   npm run db:seed
+   npm run dev:all
+   ```
 
-**Prerequisites:**  Node.js
+The storefront runs at `http://localhost:3000`, the API at `http://localhost:8080`, and staff operations at `http://localhost:3000/admin`.
 
+The bootstrap admin must replace its temporary password on first sign-in. If `RESEND_API_KEY` is empty, emails are logged as disabled without blocking orders.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Commands
+
+- `npm run lint` — type-check browser and server code
+- `npm test` — run backend business-rule tests
+- `npm run build && npm run build:server` — create production assets
+- `npm start` — serve the API and built storefront
+- `npm run db:migrate` — apply committed PostgreSQL migrations
+- `npm run db:seed` — idempotently seed catalog, locations, and the bootstrap admin
+
+## Railway
+
+Create a Railway PostgreSQL service, connect `DATABASE_URL`, and configure the remaining variables from `.env.example`. `railway.json` builds both applications, runs migrations and the idempotent seed before deployment, and checks `/api/health`.
+
+Order totals and customization prices are calculated by the server in integer cents. Tracking and reward ledgers use unguessable emailed links; staff authentication uses expiring HTTP-only cookie sessions.

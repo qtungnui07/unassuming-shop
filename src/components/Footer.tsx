@@ -5,6 +5,7 @@
 
 import React, { useState } from 'react';
 import { ScreenType } from '../types';
+import { api } from '../api';
 
 interface FooterProps {
   setScreen: (screen: ScreenType) => void;
@@ -13,15 +14,19 @@ interface FooterProps {
 export default function Footer({ setScreen }: FooterProps) {
   const [email, setEmail] = useState('');
   const [subscribed, setSubscribed] = useState(false);
+  const [error, setError] = useState('');
 
-  const handleSubscribe = (e: React.FormEvent) => {
+  const handleSubscribe = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     if (email.trim()) {
-      setSubscribed(true);
-      setTimeout(() => {
-        setSubscribed(false);
+      try {
+        await api.post('/api/newsletter', { email });
+        setSubscribed(true);
         setEmail('');
-      }, 3000);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Unable to subscribe.');
+      }
     }
   };
 
@@ -108,6 +113,7 @@ export default function Footer({ setScreen }: FooterProps) {
                   Subscribed! Welcome to real transparency.
                 </p>
               )}
+              {error && <p className="text-red-400 text-xs font-mono">{error}</p>}
             </form>
           </div>
         </div>

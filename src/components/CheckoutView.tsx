@@ -3,14 +3,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { CreditCard, ShoppingBag, Truck, CheckCircle, ChevronLeft, MapPin } from 'lucide-react';
-import { CartItem, ScreenType } from '../types';
+import React, { useEffect, useState } from 'react';
+import { CreditCard, Banknote, ShoppingBag, Truck, CheckCircle, ChevronLeft, MapPin } from 'lucide-react';
+import { CartItem, OrderDetails, ScreenType } from '../types';
+import { api } from '../api';
 
 interface CheckoutViewProps {
   cart: CartItem[];
   setScreen: (screen: ScreenType) => void;
-  onPlaceOrder: (orderDetails: any) => void;
+  onPlaceOrder: (orderDetails: OrderDetails) => void;
   clearCart: () => void;
 }
 
@@ -22,9 +23,19 @@ export default function CheckoutView({ cart, setScreen, onPlaceOrder, clearCart 
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [cardNumber, setCardNumber] = useState('');
-  const [cardExpiry, setCardExpiry] = useState('');
-  const [cardCvc, setCardCvc] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [paymentPreference, setPaymentPreference] = useState<'cash' | 'card'>('card');
+  const [applyReward, setApplyReward] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  const [quote, setQuote] = useState<{
+    subtotalCents: number;
+    discountCents: number;
+    taxCents: number;
+    deliveryFeeCents: number;
+    totalCents: number;
+    rewardAvailable: boolean;
+  } | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
 
   // Math
@@ -33,8 +44,28 @@ export default function CheckoutView({ cart, setScreen, onPlaceOrder, clearCart 
   const taxAmount = subtotal * taxRate;
   const deliveryFee = deliveryType === 'delivery' ? 4.00 : 0.00;
   const grandTotal = subtotal + taxAmount + deliveryFee;
+  const quotedTotal = quote ? quote.totalCents / 100 : grandTotal;
 
-  const handlePlaceOrderSubmit = (e: React.FormEvent) => {
+  useEffect(() => {
+    if (!cart.length || !email.includes('@') || (deliveryType === 'delivery' && !/^\d{5}$/.test(postalCode))) {
+      setQuote(null);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      api.post<NonNullable<typeof quote>>('/api/orders/quote', {
+        email, deliveryType, postalCode: deliveryType === 'delivery' ? postalCode : undefined,
+        applyReward,
+        items: cart.map((item) => ({
+          productId: item.menuItem.id,
+          quantity: item.quantity,
+          customizations: item.customizations,
+        })),
+      }).then(setQuote).catch(() => setQuote(null));
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [applyReward, cart, deliveryType, email, postalCode]);
+
+  const handlePlaceOrderSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -55,27 +86,27 @@ export default function CheckoutView({ cart, setScreen, onPlaceOrder, clearCart 
       setErrorMsg('Delivery Address is required.');
       return;
     }
-    if (!cardNumber.trim() || cardNumber.length < 16) {
-      setErrorMsg('Please enter a valid 16-digit card number.');
+    if (deliveryType === 'delivery' && !/^\d{5}$/.test(postalCode)) {
+      setErrorMsg('A valid 5-digit delivery ZIP code is required.');
       return;
     }
-
-    // Success! Create order details object
-    const simulatedOrderId = 'UNS-' + Math.floor(100000 + Math.random() * 900000);
-    const orderDetails = {
-      orderId: simulatedOrderId,
-      customerName: name,
-      deliveryType,
-      items: [...cart],
-      address: deliveryType === 'delivery' ? address : 'Downtown LA Pick-Up Cubby #4',
-      subtotal,
-      tax: taxAmount,
-      deliveryFee,
-      total: grandTotal,
-      estimatedMinutes: deliveryType === 'delivery' ? 35 : 15
-    };
-
-    onPlaceOrder(orderDetails);
+    setIsSubmitting(true);
+    try {
+      const order = await api.post<OrderDetails>('/api/orders', {
+        name, email, phone, address, postalCode: deliveryType === 'delivery' ? postalCode : undefined,
+        deliveryType, paymentPreference, applyReward, idempotencyKey,
+        items: cart.map((item) => ({
+          productId: item.menuItem.id,
+          quantity: item.quantity,
+          customizations: item.customizations,
+        })),
+      });
+      onPlaceOrder(order);
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Unable to place order.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -200,17 +231,21 @@ export default function CheckoutView({ cart, setScreen, onPlaceOrder, clearCart 
                   </div>
 
                   {deliveryType === 'delivery' && (
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono uppercase text-zinc-400 font-bold">Delivery Address</label>
-                      <input
-                        type="text"
-                        placeholder="123 S Broadway, Los Angeles, CA 90014"
-                        value={address}
-                        onChange={(e) => setAddress(e.target.value)}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-3 text-sm focus:outline-hidden focus:border-zinc-950 font-sans"
-                        required={deliveryType === 'delivery'}
-                        id="checkout-address"
-                      />
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_8rem] gap-4">
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-mono uppercase text-zinc-400 font-bold">Delivery Address</label>
+                        <input type="text" placeholder="123 S Broadway, Los Angeles" value={address}
+                          onChange={(e) => setAddress(e.target.value)}
+                          className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-3 text-sm focus:outline-hidden focus:border-zinc-950 font-sans"
+                          required id="checkout-address" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] font-mono uppercase text-zinc-400 font-bold">ZIP code</label>
+                        <input type="text" inputMode="numeric" maxLength={5} placeholder="90014" value={postalCode}
+                          onChange={(e) => setPostalCode(e.target.value.replace(/\D/g, ''))}
+                          className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-3 text-sm focus:outline-hidden focus:border-zinc-950 font-mono"
+                          required id="checkout-postal-code" />
+                      </div>
                     </div>
                   )}
                 </div>
@@ -219,59 +254,26 @@ export default function CheckoutView({ cart, setScreen, onPlaceOrder, clearCart 
               {/* Step 3: Secure Payment */}
               <div className="bg-white border border-zinc-100 rounded-2xl p-6 sm:p-8 shadow-xs space-y-5">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-lg font-black uppercase tracking-wider text-zinc-400">
-                    3. Secure Payment
-                  </h2>
+                  <h2 className="text-lg font-black uppercase tracking-wider text-zinc-400">3. Pay on handoff</h2>
                   <div className="flex items-center gap-1 text-zinc-400">
                     <CreditCard className="w-4 h-4" />
-                    <span className="text-[10px] font-mono uppercase font-bold">SSL Encrypted</span>
+                    <span className="text-[10px] font-mono uppercase font-bold">No card details collected</span>
                   </div>
                 </div>
 
-                <div className="space-y-4">
-                  <div className="space-y-1.5">
-                    <label className="text-[10px] font-mono uppercase text-zinc-400 font-bold">Card Number</label>
-                    <input
-                      type="text"
-                      maxLength={16}
-                      placeholder="4111 2222 3333 4444"
-                      value={cardNumber}
-                      onChange={(e) => setCardNumber(e.target.value.replace(/\D/g, ''))}
-                      className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-3 text-sm focus:outline-hidden focus:border-zinc-950 font-mono"
-                      required
-                      id="checkout-card-num"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono uppercase text-zinc-400 font-bold">Expiration (MM/YY)</label>
-                      <input
-                        type="text"
-                        maxLength={5}
-                        placeholder="12/28"
-                        value={cardExpiry}
-                        onChange={(e) => setCardExpiry(e.target.value)}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-3 text-sm focus:outline-hidden focus:border-zinc-950 font-mono"
-                        required
-                        id="checkout-card-expiry"
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[10px] font-mono uppercase text-zinc-400 font-bold">CVV</label>
-                      <input
-                        type="password"
-                        maxLength={3}
-                        placeholder="***"
-                        value={cardCvc}
-                        onChange={(e) => setCardCvc(e.target.value.replace(/\D/g, ''))}
-                        className="w-full bg-zinc-50 border border-zinc-200 rounded-lg px-4 py-3 text-sm focus:outline-hidden focus:border-zinc-950 font-mono"
-                        required
-                        id="checkout-card-cvc"
-                      />
-                    </div>
-                  </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {(['card', 'cash'] as const).map((method) => (
+                    <button type="button" key={method} onClick={() => setPaymentPreference(method)}
+                      className={`p-4 rounded-xl border flex items-center justify-center gap-2 text-xs font-black uppercase ${paymentPreference === method ? 'border-amber-400 bg-amber-50' : 'border-zinc-200'}`}>
+                      {method === 'card' ? <CreditCard className="w-4 h-4" /> : <Banknote className="w-4 h-4" />}
+                      {method} at handoff
+                    </button>
+                  ))}
                 </div>
+                <label className="flex items-center gap-3 text-xs text-zinc-600">
+                  <input type="checkbox" checked={applyReward} onChange={(e) => setApplyReward(e.target.checked)} />
+                  Apply an available Honest Reward to an eligible burger
+                </label>
               </div>
 
               {/* Error Warning */}
@@ -285,9 +287,9 @@ export default function CheckoutView({ cart, setScreen, onPlaceOrder, clearCart 
               <button
                 type="submit"
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm uppercase tracking-widest rounded-xl shadow-lg shadow-emerald-600/10 transition-all cursor-pointer"
-                id="btn-place-order"
+                id="btn-place-order" disabled={isSubmitting}
               >
-                Place My Honest Order (${grandTotal.toFixed(2)})
+                {isSubmitting ? 'Placing order…' : `Place My Honest Order ($${quotedTotal.toFixed(2)})`}
               </button>
 
             </form>
@@ -358,8 +360,11 @@ export default function CheckoutView({ cart, setScreen, onPlaceOrder, clearCart 
                   
                   <div className="border-t border-zinc-100 pt-4 flex justify-between text-sm text-zinc-950 font-black">
                     <span>Total Bill</span>
-                    <span className="font-mono text-base">${grandTotal.toFixed(2)}</span>
+                    <span className="font-mono text-base">${quotedTotal.toFixed(2)}</span>
                   </div>
+                  {quote && quote.discountCents > 0 && (
+                    <p className="text-xs text-emerald-700">Reward discount: -${(quote.discountCents / 100).toFixed(2)}</p>
+                  )}
                 </div>
               </div>
 

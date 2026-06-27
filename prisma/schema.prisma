@@ -1,0 +1,162 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProductCategory {
+  burgers
+  sides
+  drinks
+  shakes
+}
+
+enum LocationStatus {
+  open
+  coming_soon
+}
+
+enum DeliveryType {
+  delivery
+  pickup
+}
+
+enum PaymentPreference {
+  cash
+  card
+}
+
+enum OrderStatus {
+  received
+  preparing
+  ready
+  out_for_delivery
+  fulfilled
+  cancelled
+}
+
+model Product {
+  id           String          @id
+  name         String
+  description  String
+  priceCents   Int
+  image        String
+  category     ProductCategory
+  available    Boolean         @default(true)
+  bestSeller   Boolean         @default(false)
+  chefChoice   Boolean         @default(false)
+  calories     Int?
+  tags         String[]
+  thumbnails   String[]
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  orderItems   OrderItem[]
+}
+
+model Location {
+  id          String         @id
+  name        String
+  address     String
+  hours       String
+  status      LocationStatus
+  statusLabel String
+  mapImage    String
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model Customer {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String
+  phone           String
+  burgerProgress  Int      @default(0)
+  rewardCredits   Int      @default(0)
+  rewardAccessHash String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  orders          Order[]
+}
+
+model Order {
+  id                    String            @id @default(cuid())
+  displayId             String            @unique
+  trackingToken         String            @unique
+  trackingTokenHash     String            @unique
+  idempotencyKey        String            @unique
+  customerId            String
+  customer              Customer          @relation(fields: [customerId], references: [id])
+  deliveryType          DeliveryType
+  paymentPreference     PaymentPreference
+  address               String
+  postalCode            String?
+  status                OrderStatus       @default(received)
+  subtotalCents         Int
+  discountCents         Int               @default(0)
+  taxCents              Int
+  deliveryFeeCents      Int
+  totalCents            Int
+  estimatedMinutes      Int
+  rewardApplied         Boolean           @default(false)
+  rewardsGranted        Boolean           @default(false)
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  items                 OrderItem[]
+  statusHistory         OrderStatusHistory[]
+
+  @@index([status, createdAt])
+}
+
+model OrderItem {
+  id                String   @id @default(cuid())
+  orderId           String
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id])
+  productName       String
+  quantity          Int
+  unitBaseCents     Int
+  unitExtrasCents   Int
+  lineTotalCents    Int
+  pattyDoneness     String?
+  holdIngredients   String[]
+  extras            String[]
+}
+
+model OrderStatusHistory {
+  id        String      @id @default(cuid())
+  orderId   String
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  status    OrderStatus
+  createdAt DateTime    @default(now())
+}
+
+model NewsletterSubscription {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  createdAt DateTime @default(now())
+}
+
+model AdminUser {
+  id                 String         @id @default(cuid())
+  email              String         @unique
+  passwordHash       String
+  mustChangePassword Boolean        @default(true)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  sessions           AdminSession[]
+}
+
+model AdminSession {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  adminId   String
+  admin     AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+
+  @@index([expiresAt])
+}

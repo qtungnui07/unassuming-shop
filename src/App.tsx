@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { ScreenType, MenuItem, CartItem, Customizations } from './types';
+import React, { useEffect, useState } from 'react';
+import { ScreenType, MenuItem, CartItem, Customizations, OrderDetails } from './types';
 import { MENU_ITEMS } from './data';
+import { api } from './api';
 
 // Components
 import Header from './components/Header';
@@ -19,23 +20,54 @@ import OurStoryView from './components/OurStoryView';
 import LocationsView from './components/LocationsView';
 import RewardsView from './components/RewardsView';
 import CartDrawer from './components/CartDrawer';
+import AdminView from './components/AdminView';
 
 export default function App() {
-  const [currentScreen, setScreen] = useState<ScreenType>('home');
-  const [cart, setCart] = useState<CartItem[]>([]);
+  const [currentScreen, setScreen] = useState<ScreenType>(
+    window.location.pathname === '/admin' ? 'admin' : 'home',
+  );
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(MENU_ITEMS);
+  const [cart, setCart] = useState<CartItem[]>(() => {
+    try { return JSON.parse(localStorage.getItem('unassuming-cart') ?? '[]'); } catch { return []; }
+  });
   const [activeProduct, setActiveProduct] = useState<MenuItem>(MENU_ITEMS[0]);
-  const [orderDetails, setOrderDetails] = useState<any>(null);
+  const [orderDetails, setOrderDetails] = useState<OrderDetails | null>(null);
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   // Selector for customized product details
   const selectProduct = (productId: string) => {
-    const found = MENU_ITEMS.find(item => item.id === productId);
+    const found = menuItems.find(item => item.id === productId);
     if (found) {
       setActiveProduct(found);
       setScreen('product-detail');
       window.scrollTo(0, 0);
     }
   };
+
+  useEffect(() => {
+    api.get<MenuItem[]>('/api/catalog').then((items) => {
+      const available = items.filter((item) => item.available !== false);
+      setMenuItems(available);
+      if (available.length) setActiveProduct(available[0]);
+    }).catch(() => { /* Keep seeded static catalog while API starts. */ });
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('unassuming-cart', JSON.stringify(cart));
+  }, [cart]);
+
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('order');
+    const rewardsToken = new URLSearchParams(window.location.search).get('rewards');
+    if (token) {
+      api.get<OrderDetails>(`/api/orders/track/${encodeURIComponent(token)}`).then((order) => {
+        setOrderDetails({ ...order, trackingToken: token });
+        setScreen('order-tracking');
+      }).catch(() => {});
+    } else if (rewardsToken) {
+      setScreen('rewards');
+    }
+  }, []);
 
   // Add Item to Cart
   const handleAddToCart = (item: MenuItem, quantity: number, customizations: Customizations) => {
@@ -101,7 +133,7 @@ export default function App() {
 
   // Quick Add from Product Detail Upsells
   const quickAddUpsell = (itemId: string) => {
-    const found = MENU_ITEMS.find(item => item.id === itemId);
+    const found = menuItems.find(item => item.id === itemId);
     if (found) {
       quickAddToCart(found);
     }
@@ -135,7 +167,7 @@ export default function App() {
   };
 
   // Place order action
-  const onPlaceOrder = (details: any) => {
+  const onPlaceOrder = (details: OrderDetails) => {
     setOrderDetails(details);
     setCart([]); // Clear cart upon successful checkout
     setScreen('order-tracking');
@@ -154,13 +186,13 @@ export default function App() {
           <HomeView
             setScreen={setScreen}
             selectProduct={selectProduct}
-            menuItems={MENU_ITEMS}
+            menuItems={menuItems}
           />
         );
       case 'menu':
         return (
           <MenuView
-            menuItems={MENU_ITEMS}
+            menuItems={menuItems}
             setScreen={setScreen}
             selectProduct={selectProduct}
             quickAddToCart={quickAddToCart}
@@ -173,7 +205,7 @@ export default function App() {
             setScreen={setScreen}
             onAddToCart={handleAddToCart}
             quickAddUpsell={quickAddUpsell}
-            menuItems={MENU_ITEMS}
+            menuItems={menuItems}
           />
         );
       case 'checkout':
@@ -199,12 +231,14 @@ export default function App() {
         return <LocationsView />;
       case 'rewards':
         return <RewardsView />;
+      case 'admin':
+        return <AdminView />;
       default:
         return (
           <HomeView
             setScreen={setScreen}
             selectProduct={selectProduct}
-            menuItems={MENU_ITEMS}
+            menuItems={menuItems}
           />
         );
     }
@@ -213,12 +247,12 @@ export default function App() {
   return (
     <div className="flex flex-col min-h-screen bg-zinc-50 text-zinc-900 font-sans" id="app-viewport">
       {/* Global Navigation Header */}
-      <Header
+      {currentScreen !== 'admin' && <Header
         currentScreen={currentScreen}
         setScreen={setScreen}
         cart={cart}
         toggleCart={() => setIsCartOpen(!isCartOpen)}
-      />
+      />}
 
       {/* Main Screen Outlet */}
       <main className="flex-grow">
@@ -226,17 +260,17 @@ export default function App() {
       </main>
 
       {/* Persistent Shopping Cart Drawer */}
-      <CartDrawer
+      {currentScreen !== 'admin' && <CartDrawer
         isOpen={isCartOpen}
         onClose={() => setIsCartOpen(false)}
         cart={cart}
         onUpdateQuantity={onUpdateQuantity}
         onRemoveItem={onRemoveItem}
         onCheckoutClick={onCheckoutClick}
-      />
+      />}
 
       {/* Global Brand Footer */}
-      <Footer setScreen={setScreen} />
+      {currentScreen !== 'admin' && <Footer setScreen={setScreen} />}
     </div>
   );
 }

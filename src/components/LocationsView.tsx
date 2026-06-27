@@ -3,13 +3,24 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { MapPin, Clock, Phone, Navigation, ArrowUpRight, ShieldCheck } from 'lucide-react';
 import { LOCATIONS } from '../data';
 import { LocationData } from '../types';
+import { api } from '../api';
 
 export default function LocationsView() {
   const [activeLocation, setActiveLocation] = useState<LocationData>(LOCATIONS[0]);
+  const [locations, setLocations] = useState<LocationData[]>(LOCATIONS);
+
+  useEffect(() => {
+    api.get<LocationData[]>('/api/locations').then((items) => {
+      if (items.length) {
+        setLocations(items);
+        setActiveLocation(items[0]);
+      }
+    }).catch(() => {});
+  }, []);
 
   return (
     <div className="bg-zinc-50 py-12 sm:py-16 min-h-screen" id="locations-view-container">
@@ -34,7 +45,7 @@ export default function LocationsView() {
             </h3>
 
             <div className="space-y-3" id="locations-sidebar-list">
-              {LOCATIONS.map((loc) => {
+              {locations.map((loc) => {
                 const isActive = activeLocation.id === loc.id;
                 return (
                   <button

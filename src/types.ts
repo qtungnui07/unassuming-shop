@@ -15,6 +15,7 @@ export interface MenuItem {
   chefChoice?: boolean;
   tags?: string[];
   thumbnails?: string[];
+  available?: boolean;
 }
 
 export interface Customizations {
@@ -41,4 +42,21 @@ export interface LocationData {
   mapImage: string;
 }
 
-export type ScreenType = 'home' | 'menu' | 'product-detail' | 'checkout' | 'order-tracking' | 'our-story' | 'locations' | 'rewards';
+export interface OrderDetails {
+  orderId: string;
+  trackingToken: string;
+  customerName: string;
+  deliveryType: 'delivery' | 'pickup';
+  paymentPreference: 'cash' | 'card';
+  address: string;
+  status: string;
+  subtotalCents: number;
+  discountCents: number;
+  taxCents: number;
+  deliveryFeeCents: number;
+  totalCents: number;
+  estimatedMinutes: number;
+  items: Array<{ productId: string; name: string; quantity: number; lineTotalCents: number }>;
+}
+
+export type ScreenType = 'home' | 'menu' | 'product-detail' | 'checkout' | 'order-tracking' | 'our-story' | 'locations' | 'rewards' | 'admin';
