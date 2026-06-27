@@ -1,0 +1,6 @@
+{
+  "name": "Unassuming",
+  "description": "Radically Honest Fast Food. View complete ingredient transparency reports, build premium customized burgers, and track orders in real-time.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
