@@ -5,3 +5,193 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 }
+
+body {
+  background: #f5f5f4;
+  color: #18181b;
+}
+
+.hero-stage {
+  isolation: isolate;
+}
+
+.hero-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.18) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mask-image: radial-gradient(circle at center, black 35%, transparent 78%);
+}
+
+.hero-orbit {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  border-radius: 999px;
+  transform: translate(-50%, -50%);
+}
+
+.hero-orbit-one {
+  width: min(92%, 36rem);
+  height: min(58%, 20rem);
+  animation: spinOrbit 18s linear infinite;
+}
+
+.hero-orbit-two {
+  width: min(74%, 28rem);
+  height: min(78%, 28rem);
+  border-style: dashed;
+  opacity: 0.65;
+  animation: spinOrbitReverse 22s linear infinite;
+}
+
+.hero-ticker-wrap {
+  transform-style: preserve-3d;
+}
+
+.hero-ticker {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  width: max-content;
+  white-space: nowrap;
+  font-family: "Space Grotesk", ui-sans-serif, sans-serif;
+  font-size: clamp(3.75rem, 11vw, 8rem);
+  font-weight: 900;
+  letter-spacing: -0.08em;
+  line-height: 0.86;
+  text-transform: uppercase;
+}
+
+.hero-ticker-front {
+  color: rgba(24, 24, 27, 0.1);
+  animation: tickerLeft 24s linear infinite;
+}
+
+.hero-ticker-back {
+  margin-top: 0.5rem;
+  animation: tickerRight 32s linear infinite;
+}
+
+.hero-word {
+  display: inline-flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.hero-word::after {
+  content: "\2022";
+  color: rgba(245, 158, 11, 0.55);
+}
+
+.hero-word-outline {
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(24, 24, 27, 0.16);
+}
+
+.hero-model {
+  animation: modelFloat 5.6s ease-in-out infinite;
+  transform-style: preserve-3d;
+}
+
+.hero-model-shell {
+  overflow: hidden;
+  transform: perspective(1400px) rotateX(8deg) rotateY(-8deg);
+}
+
+.hero-overlay-wrap {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  min-height: 420px;
+  border-radius: 1.5rem;
+  background:
+    radial-gradient(circle at 50% 28%, rgba(255, 244, 214, 0.95), rgba(255, 255, 255, 0.08) 48%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(255, 255, 255, 0.08));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.hero-burger-overlay {
+  width: min(100%, 36rem);
+  object-fit: contain;
+  filter: drop-shadow(0 24px 18px rgba(24, 24, 27, 0.22)) drop-shadow(0 42px 42px rgba(24, 24, 27, 0.16));
+  animation: heroTilt 7.5s ease-in-out infinite;
+}
+
+.hero-scene-fallback {
+  min-height: 420px;
+  border-radius: 1.5rem;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(251, 191, 36, 0.4), rgba(255, 255, 255, 0) 42%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.08));
+}
+
+@keyframes tickerLeft {
+  from {
+    transform: translate3d(0, -8%, 0);
+  }
+  to {
+    transform: translate3d(-50%, -8%, 0);
+  }
+}
+
+@keyframes tickerRight {
+  from {
+    transform: translate3d(-30%, 8%, 0);
+  }
+  to {
+    transform: translate3d(0, 8%, 0);
+  }
+}
+
+@keyframes modelFloat {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0);
+  }
+}
+
+@keyframes heroTilt {
+  0%,
+  100% {
+    transform: rotate(-4deg) translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: rotate(4deg) translate3d(0, -10px, 0) scale(1.02);
+  }
+}
+
+@keyframes spinOrbit {
+  from {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+@keyframes spinOrbitReverse {
+  from {
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+  to {
+    transform: translate(-50%, -50%) rotate(0deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-orbit-one,
+  .hero-orbit-two,
+  .hero-ticker-front,
+  .hero-ticker-back,
+  .hero-model,
+  .hero-burger-overlay {
+    animation: none;
+  }
+}
